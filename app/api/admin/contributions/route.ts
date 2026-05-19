@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-admin'
+import { verifyAdminRequest } from '@/lib/admin-auth'
 
 export async function GET(req: NextRequest) {
+  const auth = verifyAdminRequest(req)
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+
   const { searchParams } = new URL(req.url)
   const status = searchParams.get('status') || 'pending'
   const limit  = parseInt(searchParams.get('limit') || '50')

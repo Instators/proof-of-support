@@ -14,11 +14,14 @@ function ParticleCanvas() {
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const ctx = canvas.getContext('2d')!
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    // Capture as a non-null local so nested closures (resize, draw) get the narrowing.
+    const c = canvas
 
     const resize = () => {
-      canvas.width  = window.innerWidth
-      canvas.height = window.innerHeight
+      c.width  = window.innerWidth
+      c.height = window.innerHeight
     }
     resize()
     window.addEventListener('resize', resize)
@@ -40,7 +43,7 @@ function ParticleCanvas() {
 
     let raf: number
     function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx!.clearRect(0, 0, c.width, c.height)
 
       // Draw connections
       for (let i = 0; i < particles.length; i++) {
@@ -49,12 +52,12 @@ function ParticleCanvas() {
           const dy   = particles[i].y - particles[j].y
           const dist = Math.sqrt(dx * dx + dy * dy)
           if (dist < 120) {
-            ctx.beginPath()
-            ctx.strokeStyle = `rgba(0,245,212,${0.08 * (1 - dist / 120)})`
-            ctx.lineWidth   = 0.5
-            ctx.moveTo(particles[i].x, particles[i].y)
-            ctx.lineTo(particles[j].x, particles[j].y)
-            ctx.stroke()
+            ctx!.beginPath()
+            ctx!.strokeStyle = `rgba(0,245,212,${0.08 * (1 - dist / 120)})`
+            ctx!.lineWidth   = 0.5
+            ctx!.moveTo(particles[i].x, particles[i].y)
+            ctx!.lineTo(particles[j].x, particles[j].y)
+            ctx!.stroke()
           }
         }
       }
@@ -63,13 +66,13 @@ function ParticleCanvas() {
       particles.forEach(p => {
         p.x += p.vx
         p.y += p.vy
-        if (p.x < 0 || p.x > canvas.width)  p.vx *= -1
-        if (p.y < 0 || p.y > canvas.height) p.vy *= -1
+        if (p.x < 0 || p.x > c.width)  p.vx *= -1
+        if (p.y < 0 || p.y > c.height) p.vy *= -1
 
-        ctx.beginPath()
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
-        ctx.fillStyle = p.color + p.alpha + ')'
-        ctx.fill()
+        ctx!.beginPath()
+        ctx!.arc(p.x, p.y, p.size, 0, Math.PI * 2)
+        ctx!.fillStyle = p.color + p.alpha + ')'
+        ctx!.fill()
       })
 
       raf = requestAnimationFrame(draw)

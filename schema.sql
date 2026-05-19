@@ -41,8 +41,10 @@ CREATE TABLE IF NOT EXISTS contributions (
 );
 
 -- ─── BADGES ─────────────────────────────────────────────────
+-- NOTE: badges.id is a TEXT slug (e.g. 'genesis', 'signal-5') so it can be
+-- referenced directly by string IDs from lib/utils.ts BADGES array.
 CREATE TABLE IF NOT EXISTS badges (
-  id          UUID  PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id          TEXT  PRIMARY KEY,
   slug        TEXT  UNIQUE NOT NULL,
   name        TEXT  NOT NULL,
   description TEXT,
@@ -59,7 +61,7 @@ CREATE TABLE IF NOT EXISTS badges (
 CREATE TABLE IF NOT EXISTS user_badges (
   id        UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
   wallet    TEXT        NOT NULL REFERENCES users(wallet) ON DELETE CASCADE,
-  badge_id  UUID        NOT NULL REFERENCES badges(id) ON DELETE CASCADE,
+  badge_id  TEXT        NOT NULL REFERENCES badges(id) ON DELETE CASCADE,
   earned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (wallet, badge_id)
 );
@@ -94,6 +96,15 @@ RETURNS VOID LANGUAGE sql AS $$
     current_season_points = GREATEST(0, current_season_points + p_points),
     updated_at            = NOW()
   WHERE wallet = p_wallet;
+$$;
+
+-- Increment a contribution's upvote counter (used by the public upvote endpoint).
+CREATE OR REPLACE FUNCTION increment_contribution_upvotes(p_id UUID)
+RETURNS INTEGER LANGUAGE sql AS $$
+  UPDATE contributions
+  SET upvotes = upvotes + 1
+  WHERE id = p_id
+  RETURNING upvotes;
 $$;
 
 -- Auto-update contributions_count
@@ -138,18 +149,18 @@ CREATE POLICY "User badges public read"   ON user_badges   FOR SELECT USING (tru
 -- Note: Writes are handled server-side via service role key only
 
 -- ─── SEED BADGES ────────────────────────────────────────────
-INSERT INTO badges (slug, name, description, icon, color, tier, threshold, type) VALUES
-  ('genesis',     'Genesis',     'First contribution ever submitted',         '🌱', 'green',  'common',    1,    'contributions'),
-  ('signal-5',    'Signal Boost','5 contributions submitted',                  '📡', 'cyan',   'common',    5,    'contributions'),
-  ('advocate-10', 'Advocate',    '10 contributions submitted',                 '📢', 'cyan',   'rare',      10,   'contributions'),
-  ('champion-25', 'Champion',    '25 contributions submitted',                 '🏆', 'gold',   'epic',      25,   'contributions'),
-  ('legend-50',   'Legend',      '50 contributions submitted',                 '⚡', 'purple', 'legendary', 50,   'contributions'),
-  ('streak-7',    'Consistent',  '7-day contribution streak',                  '🔥', 'pink',   'rare',      7,    'streak'),
-  ('streak-30',   'Relentless',  '30-day contribution streak',                 '💎', 'purple', 'legendary', 30,   'streak'),
-  ('points-100',  'Centurion',   '100 points earned',                          '💯', 'gold',   'common',    100,  'points'),
-  ('points-500',  'Power Node',  '500 points earned',                          '⚙️', 'cyan',   'epic',      500,  'points'),
-  ('points-1000', 'Genesis Core','1,000 points earned — founding tier',        '🔮', 'purple', 'legendary', 1000, 'points')
-ON CONFLICT (slug) DO NOTHING;
+INSERT INTO badges (id, slug, name, description, icon, color, tier, threshold, type) VALUES
+  ('genesis',     'genesis',     'Genesis',     'First contribution ever submitted',         '🌱', 'green',  'common',    1,    'contributions'),
+  ('signal-5',    'signal-5',    'Signal Boost','5 contributions submitted',                  '📡', 'cyan',   'common',    5,    'contributions'),
+  ('advocate-10', 'advocate-10', 'Advocate',    '10 contributions submitted',                 '📢', 'cyan',   'rare',      10,   'contributions'),
+  ('champion-25', 'champion-25', 'Champion',    '25 contributions submitted',                 '🏆', 'gold',   'epic',      25,   'contributions'),
+  ('legend-50',   'legend-50',   'Legend',      '50 contributions submitted',                 '⚡', 'purple', 'legendary', 50,   'contributions'),
+  ('streak-7',    'streak-7',    'Consistent',  '7-day contribution streak',                  '🔥', 'pink',   'rare',      7,    'streak'),
+  ('streak-30',   'streak-30',   'Relentless',  '30-day contribution streak',                 '💎', 'purple', 'legendary', 30,   'streak'),
+  ('points-100',  'points-100',  'Centurion',   '100 points earned',                          '💯', 'gold',   'common',    100,  'points'),
+  ('points-500',  'points-500',  'Power Node',  '500 points earned',                          '⚙️', 'cyan',   'epic',      500,  'points'),
+  ('points-1000', 'points-1000', 'Genesis Core','1,000 points earned — founding tier',        '🔮', 'purple', 'legendary', 1000, 'points')
+ON CONFLICT (id) DO NOTHING;
 
 -- ─── SEED SEASON ────────────────────────────────────────────
 INSERT INTO seasons (slug, name, starts_at, ends_at, is_active) VALUES

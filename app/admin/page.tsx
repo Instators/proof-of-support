@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { Navbar } from '@/components/Navbar'
 import { shortenWallet, timeAgo, getTypeConfig } from '@/lib/utils'
+import { useAdminAuth } from '@/hooks/useAdminAuth'
 import type { Contribution, AdminStats } from '@/lib/types'
 
 type AdminTab = 'pending' | 'approved' | 'rejected' | 'stats'
@@ -55,6 +56,7 @@ function StatBox({ label, value, icon, color }: {
 export default function AdminPage() {
   const { publicKey, connected } = useWallet()
   const ADMIN_WALLET = process.env.NEXT_PUBLIC_ADMIN_WALLET
+  const { adminFetch, signing, error: authError } = useAdminAuth()
 
   const [tab, setTab]                 = useState<AdminTab>('pending')
   const [contributions, setContributions] = useState<Contribution[]>([])
@@ -74,13 +76,15 @@ export default function AdminPage() {
     setLoading(true)
     try {
       const [contribRes, statsRes] = await Promise.all([
-        fetch(`/api/admin/contributions?status=${tab}`),
-        fetch('/api/admin/stats'),
+        adminFetch(`/api/admin/contributions?status=${tab}`),
+        adminFetch('/api/admin/stats'),
       ])
       const contribData = await contribRes.json()
       const statsData   = await statsRes.json()
       setContributions(contribData.data || [])
       setStats(statsData)
+    } catch (e: any) {
+      showToast(e?.message || 'Failed to load admin data', 'error')
     } finally {
       setLoading(false)
     }
@@ -93,7 +97,7 @@ export default function AdminPage() {
   async function handleAction(id: string, action: 'approve' | 'reject') {
     setActionLoading(id)
     try {
-      const res = await fetch(`/api/admin/contributions/${id}`, {
+      const res = await adminFetch(`/api/admin/contributions/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: action === 'approve' ? 'approved' : 'rejected' }),

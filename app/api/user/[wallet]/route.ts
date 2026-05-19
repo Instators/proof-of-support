@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import { BADGES } from '@/lib/utils'
 
 type Params = { params: { wallet: string } }
@@ -36,8 +36,20 @@ export async function POST(req: NextRequest, { params }: Params) {
 export async function GET(req: NextRequest, { params }: Params) {
   const { wallet } = params
 
-  const [userRes, contribRes, badgesRes, rankRes] = await Promise.all([
-    supabaseAdmin.from('users').select('*').eq('wallet', wallet).single(),
+  // Fetch user first so the rank query has the real total_points value.
+  // (Putting it inside Promise.all alongside the rank query caused rank to
+  // always compare against 0 because userRes was an unresolved promise.)
+  const userRes = await supabaseAdmin
+    .from('users')
+    .select('*')
+    .eq('wallet', wallet)
+    .maybeSingle()
+
+  if (!userRes.data) {
+    return NextResponse.json({ user: null, contributions: [], badges: [] })
+  }
+
+  const [contribRes, badgesRes, rankRes] = await Promise.all([
     supabaseAdmin
       .from('contributions')
       .select('*')
@@ -47,17 +59,16 @@ export async function GET(req: NextRequest, { params }: Params) {
       .from('user_badges')
       .select('*, badges(*)')
       .eq('wallet', wallet),
-    // Rank query — count users with more points
     supabaseAdmin
       .from('users')
       .select('id', { count: 'exact', head: true })
-      .gt('total_points', userRes.data?.total_points || 0),
+      .gt('total_points', userRes.data.total_points || 0),
   ])
 
   const rank = (rankRes.count || 0) + 1
 
   return NextResponse.json({
-    user: userRes.data ? { ...userRes.data, rank } : null,
+    user: { ...userRes.data, rank },
     contributions: contribRes.data || [],
     badges: badgesRes.data || [],
   })
@@ -82,7 +93,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .select('wallet')
     .eq('username', username.trim())
     .neq('wallet', wallet)
-    .single()
+    .maybeSingle()
 
   if (conflict) {
     return NextResponse.json({ error: 'Username already taken' }, { status: 409 })

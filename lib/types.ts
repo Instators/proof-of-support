@@ -71,11 +71,11 @@ export interface AdminStats {
   contributions_today: number
 }
 
-export interface Season {
+export interface SeasonRecord {
   id: string
   slug: string
   name: string
   starts_at: string
-  ends_at: string
+  ends_at: string | null
   is_active: boolean
 }

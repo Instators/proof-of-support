@@ -42,9 +42,12 @@ export default function SubmitPage() {
       let signature: string | null = null
       if (signMessage) {
         try {
-          const msg  = new TextEncoder().encode(`Proof-of-Support: ${link} | ${Date.now()}`)
-          const sig  = await signMessage(msg)
-          signature  = Buffer.from(sig).toString('base64')
+          const msg = new TextEncoder().encode(`Proof-of-Support: ${link} | ${Date.now()}`)
+          const sig = await signMessage(msg)
+          // Browser-safe base64 (Buffer isn't reliably available client-side)
+          let bin = ''
+          for (let i = 0; i < sig.length; i++) bin += String.fromCharCode(sig[i])
+          signature = btoa(bin)
         } catch {
           // User rejected sign — continue without signature
         }

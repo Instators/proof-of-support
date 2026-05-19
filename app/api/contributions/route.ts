@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
-import { POINTS_MAP, BADGES } from '@/lib/utils'
+import { supabaseAdmin } from '@/lib/supabase-admin'
+import { POINTS_MAP } from '@/lib/utils'
 
 // ─── GET /api/contributions ─────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -59,20 +59,22 @@ export async function POST(req: NextRequest) {
     .upsert({ wallet }, { onConflict: 'wallet', ignoreDuplicates: true })
   if (upsertErr) return NextResponse.json({ error: upsertErr.message }, { status: 500 })
 
-  // Duplicate link check (same wallet)
+  // Duplicate link check (same wallet). maybeSingle returns null when no row matches
+  // (single() raises an error for 0 rows, which then has to be ignored — noisier).
   const { data: existing } = await supabaseAdmin
     .from('contributions')
     .select('id')
     .eq('wallet', wallet)
     .eq('link', link)
-    .single()
+    .maybeSingle()
   if (existing) {
     return NextResponse.json({ error: 'You have already submitted this link' }, { status: 409 })
   }
 
   const points = POINTS_MAP[type as keyof typeof POINTS_MAP] || 10
 
-  // Insert contribution
+  // Insert contribution as pending. Points and badges are NOT awarded here —
+  // they are awarded by the admin PATCH route when the contribution is approved.
   const { data: contribution, error: insertErr } = await supabaseAdmin
     .from('contributions')
     .insert({
@@ -90,90 +92,5 @@ export async function POST(req: NextRequest) {
 
   if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 })
 
-  // Update points + streak atomically
-  await updateUserPoints(wallet, points)
-  await updateStreak(wallet)
-
-  // Award badges
-  const newBadges = await checkAndAwardBadges(wallet)
-
-  return NextResponse.json({ data: contribution, newBadges }, { status: 201 })
-}
-
-// ─── HELPERS ────────────────────────────────────────────────────────────────
-
-async function updateUserPoints(wallet: string, points: number) {
-  await supabaseAdmin.rpc('increment_user_points', {
-    p_wallet: wallet,
-    p_points: points,
-  })
-}
-
-async function updateStreak(wallet: string) {
-  const { data: user } = await supabaseAdmin
-    .from('users')
-    .select('streak_days, streak_last_date')
-    .eq('wallet', wallet)
-    .single()
-
-  if (!user) return
-
-  const today     = new Date().toISOString().split('T')[0]
-  const lastDate  = user.streak_last_date
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
-
-  let newStreak = user.streak_days || 0
-
-  if (lastDate === today) return // Already counted today
-  if (lastDate === yesterday) newStreak += 1  // Continuing streak
-  else newStreak = 1 // Streak broken, restart
-
-  await supabaseAdmin
-    .from('users')
-    .update({
-      streak_days:     newStreak,
-      streak_last_date: today,
-    })
-    .eq('wallet', wallet)
-}
-
-async function checkAndAwardBadges(wallet: string): Promise<string[]> {
-  const { data: user } = await supabaseAdmin
-    .from('users')
-    .select('total_points, streak_days')
-    .eq('wallet', wallet)
-    .single()
-
-  if (!user) return []
-
-  const { count: contribCount } = await supabaseAdmin
-    .from('contributions')
-    .select('id', { count: 'exact', head: true })
-    .eq('wallet', wallet)
-
-  const { data: existingBadges } = await supabaseAdmin
-    .from('user_badges')
-    .select('badge_id')
-    .eq('wallet', wallet)
-
-  const alreadyEarned = new Set((existingBadges || []).map(b => b.badge_id))
-  const newBadgeNames: string[] = []
-
-  for (const badge of BADGES) {
-    if (alreadyEarned.has(badge.id)) continue
-
-    let earned = false
-    if (badge.type === 'contributions' && (contribCount || 0) >= badge.threshold) earned = true
-    if (badge.type === 'points'        && user.total_points >= badge.threshold)    earned = true
-    if (badge.type === 'streak'        && user.streak_days >= badge.threshold)     earned = true
-
-    if (earned) {
-      await supabaseAdmin
-        .from('user_badges')
-        .upsert({ wallet, badge_id: badge.id }, { onConflict: 'wallet,badge_id' })
-      newBadgeNames.push(badge.name)
-    }
-  }
-
-  return newBadgeNames
+  return NextResponse.json({ data: contribution }, { status: 201 })
 }

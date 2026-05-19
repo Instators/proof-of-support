@@ -2,7 +2,6 @@
 
 import { useWallet } from '@solana/wallet-adapter-react'
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
 import type { User } from '@/lib/types'
 
 export function useUser() {

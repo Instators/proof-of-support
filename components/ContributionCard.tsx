@@ -34,6 +34,15 @@ export function ContributionCard({ contribution, animate = true, delay = 0, onUp
     if (upvoted) return
     setUpvoted(true)
     setVotes(v => v + 1)
+    // Persist the upvote — revert local state on failure.
+    fetch(`/api/contributions/${contribution.id}/upvote`, { method: 'POST' })
+      .then(res => {
+        if (!res.ok) throw new Error('upvote failed')
+      })
+      .catch(() => {
+        setUpvoted(false)
+        setVotes(v => Math.max(0, v - 1))
+      })
     onUpvote?.(contribution.id)
   }
 
